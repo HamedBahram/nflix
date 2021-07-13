@@ -52,6 +52,10 @@ class UsersController {
             const userInfo = {
                 ...userFromBody,
                 password: await hashPassword(userFromBody.password),
+                preferences: {
+                    favorite_cast: '',
+                    preferred_language: '',
+                },
             }
             const { error } = await UsersDao.addUser(userInfo)
             if (error) return res.status(400).json({ error })
@@ -81,12 +85,12 @@ class UsersController {
             if (!password || typeof password !== 'string')
                 return res.status(400).json({ error: 'Bad password' })
 
-            const userData = await UsersDao.getUser(email)
-            if (!userData)
+            const userFromDB = await UsersDao.getUser(email)
+            if (!userFromDB)
                 return res
                     .status(401)
                     .json({ error: 'Make sure your email and password is correct' })
-            const user = new User(userData)
+            const user = new User(userFromDB)
             if (!(await user.comparePassword(password)))
                 return res
                     .status(401)
@@ -107,7 +111,7 @@ class UsersController {
     static async logout(req, res, next) {
         try {
             const userJwt = req.get('Authorization').slice('Bearer '.length)
-            const userObj = await User.decode(userJwt)
+            const userObj = User.decode(userJwt)
             if (userObj.error) return res.status(401).json({ error: userObj.error.message })
 
             const { success, error } = await UsersDao.logoutUser(userObj.email)
@@ -117,6 +121,82 @@ class UsersController {
             return res.status(500).json({ error: e.message })
         }
     }
+
+    static async validateUser(req, res, next) {
+        try {
+            const userJwt = req.get('Authorization').slice('Bearer '.length)
+            const userClaim = User.decode(userJwt)
+            const { error } = userClaim
+            if (error) return res.status(401).json({ error: error.message })
+
+            const userFromDB = await UsersDao.getUser(userClaim.email)
+            if (!userFromDB) return res.status(401).json({ error: 'User not found.' })
+
+            const user = new User(userFromDB)
+            res.json({
+                auth_token: user.encode(),
+                info: user.toJson(),
+            })
+        } catch (e) {
+            console.error(e)
+            return res.status(500).json({ error: e.message })
+        }
+    }
+
+    static async update(req, res, next) {
+        try {
+            const userJwt = req.get('Authorization').slice('Bearer '.length)
+            const userObj = User.decode(userJwt)
+            const { error } = userObj
+            if (error) return res.status(401).json({ error: error.message })
+
+            const updateResult = await UsersDao.updatePreferences(
+                userObj.email,
+                req.body.preferences
+            )
+            if (updateResult.error) return res.status(400).json({ error: updateResult.error })
+
+            const userFromDB = await UsersDao.getUser(userObj.email)
+            if (!userFromDB) return res.status(500).json({ error: 'Server Error.' })
+
+            const updatedUser = new User(userFromDB)
+            res.json({
+                auth_token: updatedUser.encode(),
+                info: updatedUser.toJson(),
+            })
+        } catch (e) {
+            res.status(500).json({ error: e.message })
+        }
+    }
+
+    static async delete(req, res, next) {
+        try {
+            const { password } = req.body
+            if (!password || typeof password !== 'string') {
+                return res.status(400).json({ error: 'Bad Password Format.' })
+            }
+            const userJwt = req.get('Authorization').slice('Bearer '.length)
+            const userClaim = User.decode(userJwt)
+            const { error } = userClaim
+            if (error) return res.status(401).json({ error: error.message })
+
+            const userFromDB = await UsersDao.getUser(userClaim.email)
+            if (!userFromDB) return res.status(400).json({ error: 'User not found.' })
+
+            const user = new User(userFromDB)
+            if (!(await user.comparePassword(password)))
+                return res.status(401).json({ error: "Password doesn't match our records." })
+
+            const deleteResult = await UsersDao.deleteUser(userClaim.email)
+            if (deleteResult.error) {
+                return res.status(400).json({ error: deleteResult.error })
+            }
+
+            res.json(deleteResult)
+        } catch (error) {
+            res.status(500).json({ error: error.message })
+        }
+    }
 }
 
-module.exports = UsersController
+module.exports = { UsersController, User }

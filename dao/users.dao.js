@@ -1,3 +1,5 @@
+const CommentsDao = require('./comments.dao')
+
 let users
 let sessions
 
@@ -14,7 +16,7 @@ class UsersDao {
 
     static async addUser(userInfo) {
         try {
-            await users.insertOne(userInfo)
+            await users.insertOne(userInfo, { writeConcern: { w: 'majority', wtimeout: 5000 } })
             return { success: true, error: null }
         } catch (e) {
             if (String(e).startsWith('MongoError: E11000 duplicate key error')) {
@@ -46,6 +48,46 @@ class UsersDao {
         } catch (e) {
             console.error(`Error occured while logging out user: ${e}`)
             return { success: null, error: e.message }
+        }
+    }
+
+    static async updatePreferences(email, preferences = {}) {
+        try {
+            const updateResult = await users.updateOne({ email }, { $set: { preferences } })
+            if (updateResult.matchedCount === 0) return { error: 'No user found with that email' }
+            return updateResult
+        } catch (e) {
+            console.error(`Error while updating user preferences: ${e}`)
+            return { error: e.message }
+        }
+    }
+
+    static async getUserSession(email) {
+        try {
+            return await sessions.findOne({ user_id: email })
+        } catch (error) {
+            console.error(error)
+            return { error }
+        }
+    }
+
+    static async deleteUser(email) {
+        try {
+            await users.deleteOne({ email })
+            await sessions.deleteOne({ user_id: email })
+            await CommentsDao.deleteComments(email)
+            if (
+                (await this.getUser(email)) ||
+                (await this.getUserSession(email)) ||
+                (await CommentsDao.getComments(email)).length
+            ) {
+                return { error: 'Deletion was unsuccessful' }
+            }
+
+            return { success: true }
+        } catch (error) {
+            console.error(error)
+            return { error: error.message }
         }
     }
 }

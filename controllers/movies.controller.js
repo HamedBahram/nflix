@@ -1,5 +1,4 @@
 const MoviesDao = require('../dao/movies.dao')
-const { ObjectID } = require('mongodb')
 
 class MoviesController {
     static async getMovies(req, res, next) {
@@ -28,7 +27,7 @@ class MoviesController {
             res.json(movie)
         } catch (e) {
             console.error(`Get movies by ID controller, ${e}`)
-            res.status(500).json({ error: e })
+            res.status(500).json({ error: e.message })
         }
     }
 

@@ -3,6 +3,7 @@ const express = require('express')
 const path = require('path')
 const morgan = require('morgan')
 const { MongoClient } = require('mongodb')
+
 const MoviesDao = require('./dao/movies.dao')
 const UsersDao = require('./dao/users.dao')
 const CommentsDao = require('./dao/comments.dao')
